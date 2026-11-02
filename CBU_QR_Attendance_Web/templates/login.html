@@ -1,0 +1,71 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sign in · CBU QR Attendance</title><link rel="stylesheet" href="/static/style.css"></head><body><div class="login-wrap"><div class="login card"><div class="logo-orb">QR</div><div class="kicker">Copperbelt University</div><h1>Attendance made simple.</h1><p class="muted">Sign in with your staff number to manage attendance.</p>{% if error %}<div class="notice bad" role="alert"><strong>Sign-in failed.</strong> {{ error }}</div>{% endif %}<form method="post" action="/login" id="loginForm"><div class="field"><label>Staff Number</label><input id="identifier" name="identifier" placeholder="e.g. LECTURER001" autocomplete="username" required autofocus></div><div class="field"><label>Password</label><div class="password-wrap" style="position:relative;">
+<input id="password" name="password" type="password" autocomplete="current-password" required style="padding-right:48px;">
+<button type="button" id="togglePassword" aria-label="Show password" title="Show password" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);border:0;background:transparent;cursor:pointer;padding:4px;color:inherit;">
+<svg id="eyeIcon" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
+<circle cx="12" cy="12" r="3"></circle>
+</svg>
+</button>
+</div></div><button class="btn" id="loginButton" type="submit" style="width:100%"><span id="loginButtonText">Sign in</span></button></form><p class="muted" style="font-size:.85rem;margin-top:18px">Lecturer and administrator access only. Students use the mobile attendance app.</p></div></div><script>
+const passwordInput = document.getElementById("password");
+const togglePassword = document.getElementById("togglePassword");
+
+togglePassword.addEventListener("click", () => {
+    const showing = passwordInput.type === "text";
+    passwordInput.type = showing ? "password" : "text";
+    togglePassword.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+    togglePassword.setAttribute("title", showing ? "Show password" : "Hide password");
+});
+</script>
+<script>
+const loginForm = document.getElementById("loginForm");
+const loginButton = document.getElementById("loginButton");
+const loginButtonText = document.getElementById("loginButtonText");
+
+loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    loginButton.disabled = true;
+    loginButtonText.textContent = "Signing in...";
+    loginButton.style.background = "";
+    loginButton.style.borderColor = "";
+
+    try {
+        const response = await fetch("/login", {
+            method: "POST",
+            body: new FormData(loginForm),
+            headers: {
+                "X-Login-Request": "fetch"
+            }
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            loginButton.style.background = "#16a34a";
+            loginButton.style.borderColor = "#16a34a";
+            loginButton.style.color = "#ffffff";
+            loginButtonText.textContent = "✓ Login successful";
+
+            setTimeout(() => {
+                window.location.href = data.redirect;
+            }, 700);
+
+        } else {
+            loginButton.style.background = "#dc2626";
+            loginButton.style.borderColor = "#dc2626";
+            loginButton.style.color = "#ffffff";
+            loginButtonText.textContent = "✕ Incorrect ID or password";
+            loginButton.disabled = false;
+        }
+
+    } catch (error) {
+        loginButton.style.background = "#dc2626";
+        loginButton.style.borderColor = "#dc2626";
+        loginButton.style.color = "#ffffff";
+        loginButtonText.textContent = "Connection error - Try again";
+        loginButton.disabled = false;
+    }
+});
+</script>
+</body></html>

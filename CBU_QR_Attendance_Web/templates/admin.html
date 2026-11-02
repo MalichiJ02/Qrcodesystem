@@ -1,0 +1,502 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="hero">
+  <div class="kicker">Administrator workspace</div>
+  <div class="admin-heading">
+    <h1>Admin Dashboard</h1>
+    <p>Manage users, courses, lecturer assignments and student enrolments.</p>
+</div>
+
+<div class="admin-stats">
+    <div class="stat-card">
+        <span class="stat-label">Active Students</span>
+        <strong>{{ stats.students }}</strong>
+    </div>
+
+    <div class="stat-card">
+        <span class="stat-label">Active Lecturers</span>
+        <strong>{{ stats.lecturers }}</strong>
+    </div>
+
+    <div class="stat-card">
+        <span class="stat-label">Courses</span>
+        <strong>{{ stats.courses }}</strong>
+    </div>
+
+    <div class="stat-card">
+        <span class="stat-label">Active Enrolments</span>
+        <strong>{{ stats.enrollments }}</strong>
+    </div>
+</div>
+
+<nav class="admin-section-nav" aria-label="Admin dashboard sections">
+    <a href="#setup">Setup</a>
+    <a href="#bulk-import">Bulk Import</a>
+    <a href="#courses">Courses</a>
+    <a href="#users">Users</a>
+    <a href="#enrolments">Enrolments</a>
+    <a href="#audit-log">Audit Log</a>
+</nav>
+  <p>Create and manage accounts, courses, lecturer assignments and student enrolments. Students cannot create their own accounts.</p>
+</section>
+
+{% if message %}<div class="notice good">{{ message }}</div>{% endif %}
+{% if error %}<div class="notice bad">{{ error }}</div>{% endif %}
+
+<div class="grid grid-3">
+  <div class="card">
+    <h2 id="setup">Create user</h2>
+    <form method="post" action="/admin/user/create">
+      <div class="field"><label>Student / Staff Number</label><input name="identifier" required></div>
+      <div class="field"><label>Full name</label><input name="full_name" required></div>
+      <div class="field"><label>Role</label><select name="role"><option value="student">Student</option><option value="lecturer">Lecturer</option><option value="admin">Administrator</option></select></div>
+      <div class="field"><label>Temporary password</label><input name="password" type="password" minlength="8" required></div>
+      <button class="btn">Create account</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Create course</h2>
+    {% if lecturers %}
+    <form method="post" action="/admin/course/create">
+      <div class="field"><label>Course code</label><input name="code" placeholder="CS301" required></div>
+      <div class="field"><label>Course name</label><input name="name" required></div>
+      <div class="field"><label>Assigned lecturer</label><select name="lecturer_id">{% for l in lecturers %}<option value="{{ l['id'] }}">{{ l['identifier'] }} · {{ l['full_name'] }}</option>{% endfor %}</select></div>
+      <button class="btn">Create course</button>
+    </form>
+    {% else %}<div class="notice bad">Create or activate a lecturer account before creating a course.</div>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Enroll student</h2>
+    {% if students and courses %}
+    <form method="post" action="/admin/enroll">
+      <div class="field"><label>Student</label><select name="student_id">{% for s in students %}<option value="{{ s['id'] }}">{{ s['identifier'] }} · {{ s['full_name'] }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Course</label><select name="course_id">{% for c in courses %}<option value="{{ c['id'] }}">{{ c['code'] }} · {{ c['name'] }}</option>{% endfor %}</select></div>
+      <button class="btn">Enroll student</button>
+    </form>
+    {% else %}<div class="notice bad">An active student and at least one course are required.</div>{% endif %}
+  </div>
+</div>
+
+
+<div class="section-title">
+  <h2 id="bulk-import">Bulk Import</h2>
+</div>
+
+<div class="grid grid-2">
+
+  <div class="card">
+    <h2>Import Students</h2>
+    <p class="muted">
+      Upload a CSV file to create multiple student accounts at once.
+      Existing student numbers will be skipped.
+    </p>
+
+    <form
+      method="post"
+      action="/admin/import/students"
+      enctype="multipart/form-data">
+
+      <div class="field">
+        <label>Student CSV file</label>
+        <input
+          type="file"
+          name="csv_file"
+          accept=".csv,text/csv"
+          required>
+      </div>
+
+      <p class="muted" style="font-size:.85rem">
+        Required columns:
+        <strong>student_number, full_name, password</strong>
+      </p>
+
+      <button class="btn" type="submit">
+        Import Students
+      </button>
+    </form>
+  </div>
+
+
+  <div class="card">
+    <h2>Import Lecturers</h2>
+    <p class="muted">
+      Upload a CSV file to create multiple lecturer accounts.
+      Existing staff numbers will be skipped.
+    </p>
+
+    <form
+      method="post"
+      action="/admin/import/lecturers"
+      enctype="multipart/form-data">
+
+      <div class="field">
+        <label>Lecturer CSV file</label>
+        <input
+          type="file"
+          name="csv_file"
+          accept=".csv,text/csv"
+          required>
+      </div>
+
+      <p class="muted" style="font-size:.85rem">
+        Required columns:
+        <strong>staff_number, full_name, password</strong>
+      </p>
+
+      <button class="btn" type="submit">
+        Import Lecturers
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<div class="section-title"><h2 id="courses">Courses</h2></div>
+<div class="card table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Lecturer</th><th>Enrolled</th><th>Actions</th></tr></thead><tbody>
+{% for c in courses %}<tr>
+  <td>{{ c['code'] }}</td><td>{{ c['name'] }}</td><td>{{ c['lecturer_name'] or 'Unassigned' }}</td><td>{{ c['enrolled'] }}</td>
+  <td>
+    <a class="btn secondary small" href="/lecturer/course/{{ c['id'] }}/report">Report</a>
+    <details style="margin-top:8px"><summary>Edit course</summary>
+      <form method="post" action="/admin/course/{{ c['id'] }}/edit" style="min-width:260px;margin-top:10px">
+        <div class="field"><label>Course code</label><input name="code" value="{{ c['code'] }}" required></div>
+        <div class="field"><label>Course name</label><input name="name" value="{{ c['name'] }}" required></div>
+        <div class="field"><label>Lecturer</label><select name="lecturer_id">{% for l in lecturers %}<option value="{{ l['id'] }}" {% if l['id']==c['lecturer_id'] %}selected{% endif %}>{{ l['identifier'] }} · {{ l['full_name'] }}</option>{% endfor %}</select></div>
+        <button class="btn small">Save changes</button>
+      </form>
+    </details>
+  </td>
+</tr>{% else %}<tr><td colspan="5" class="empty">No courses created yet.</td></tr>{% endfor %}
+</tbody></table></div>
+
+<div class="section-title"><h2 id="users">Users</h2></div>
+
+<div class="admin-table-tools">
+    <div class="admin-search">
+        <label for="userSearch">Search users</label>
+        <input
+            type="search"
+            id="userSearch"
+            placeholder="Search by ID, name or role..."
+            autocomplete="off">
+    </div>
+
+    <div class="admin-filter">
+        <label for="userRoleFilter">Role</label>
+        <select id="userRoleFilter">
+            <option value="">All roles</option>
+            <option value="admin">Admin</option>
+            <option value="lecturer">Lecturer</option>
+            <option value="student">Student</option>
+        </select>
+    </div>
+</div>
+
+<div class="card table-wrap">
+<table id="usersTable">
+<thead>
+<tr>
+    <th>ID</th>
+    <th>Name</th>
+    <th>Role</th>
+    <th>Status</th>
+    <th>Actions</th>
+</tr>
+</thead>
+<tbody>
+{% for u in users %}<tr data-role="{{ u['role'] }}">
+  <td>{{ u['identifier'] }}</td><td>{{ u['full_name'] }}</td><td>{{ u['role']|title }}</td>
+  <td><span class="status {{ 'good' if u['active'] else 'warn' }}">{{ 'Active' if u['active'] else 'Disabled' }}</span></td>
+  <td>
+    <details><summary>Manage</summary><div style="min-width:280px;margin-top:10px">
+      <form method="post" action="/admin/user/{{ u['id'] }}/edit">
+        <div class="field"><label>Student / Staff Number</label><input name="identifier" value="{{ u['identifier'] }}" required></div>
+        <div class="field"><label>Full name</label><input name="full_name" value="{{ u['full_name'] }}" required></div>
+        <button class="btn small">Save details</button>
+      </form>
+      <hr style="margin:14px 0">
+      <form method="post" action="/admin/user/{{ u['id'] }}/reset-password">
+        <div class="field"><label>New password</label><input type="password" name="password" minlength="8" required></div>
+        <button class="btn secondary small">Reset password</button>
+      </form>
+      {% if u['id'] != user['id'] %}
+      <form method="post" action="/admin/user/{{ u['id'] }}/toggle" style="margin-top:10px" {% if u['active'] %}onsubmit="return confirm('Deactivate {{ u['full_name'] }} ({{ u['identifier'] }})? They will not be able to sign in until the account is activated again.');"{% endif %}><button class="btn secondary small">{{ 'Deactivate' if u['active'] else 'Activate' }}</button></form>
+      <form method="post" action="/admin/user/{{ u['id'] }}/delete" style="margin-top:10px" onsubmit="return confirm('Permanently delete this unused account? Accounts with academic/history records will be protected.');"><button class="btn danger small">Delete permanently</button></form>
+      {% else %}<p class="muted" style="font-size:.85rem">Your current administrator account cannot be disabled or deleted here.</p>{% endif %}
+    </div></details>
+  </td>
+</tr>{% endfor %}
+</tbody></table></div>
+
+<div class="section-title"><h2 id="enrolments">Student enrolments</h2></div>
+<div class="card table-wrap"><table><thead><tr><th>Student</th><th>Course</th><th>Status</th><th>Action</th></tr></thead><tbody>
+{% for e in enrollments %}<tr>
+  <td>{{ e['student_identifier'] }} · {{ e['student_name'] }}</td><td>{{ e['course_code'] }} · {{ e['course_name'] }}</td>
+  <td><span class="status {{ 'good' if e['status']=='active' else 'warn' }}">{{ e['status']|title }}</span></td>
+  <td>{% if e['status']=='active' %}<form method="post" action="/admin/enrollment/{{ e['id'] }}/remove" onsubmit="return confirm('Remove this student from this course? The enrolment will become inactive and can be restored later.');"><button class="btn danger small">Remove</button></form>{% else %}<form method="post" action="/admin/enrollment/{{ e['id'] }}/reactivate"><button class="btn small">Re-enroll</button></form>{% endif %}</td>
+</tr>{% else %}<tr><td colspan="4" class="empty">No enrolments yet.</td></tr>{% endfor %}
+</tbody></table></div>
+
+<div class="section-title"><h2 id="audit-log">Audit log</h2></div>
+<div class="card table-wrap"><table><thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th><th>Reason</th></tr></thead><tbody>
+{% for a in audit %}<tr><td>{{ a['created_at'] }}</td><td>{{ a['identifier'] }}</td><td>{{ a['action'] }}</td><td>{{ a['entity_type'] }} #{{ a['entity_id'] or '' }}</td><td>{{ a['reason'] or '—' }}</td></tr>{% else %}<tr><td colspan="5" class="empty">No audit activity yet.</td></tr>{% endfor %}
+</tbody></table></div>
+
+<script>
+(function () {
+    const search = document.getElementById("userSearch");
+    const roleFilter = document.getElementById("userRoleFilter");
+    const table = document.getElementById("usersTable");
+
+    if (!search || !roleFilter || !table) {
+        console.error("User filtering controls could not be found.");
+        return;
+    }
+
+    function filterUsers() {
+        const query = search.value.trim().toLowerCase();
+        const role = roleFilter.value.toLowerCase();
+        const rows = table.querySelectorAll("tbody tr");
+
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            const rowRole = (row.dataset.role || "").toLowerCase();
+
+            const matchesSearch =
+                query === "" || text.includes(query);
+
+            const matchesRole =
+                role === "" || rowRole === role;
+
+            row.style.display =
+                matchesSearch && matchesRole ? "" : "none";
+        });
+    }
+
+    search.addEventListener("input", filterUsers);
+    roleFilter.addEventListener("change", filterUsers);
+
+    console.log("Admin user filtering ready.");
+})();
+</script>
+
+{% endblock %}
+
+<style>
+/* Admin search and filter controls */
+.admin-table-tools {
+    display: flex;
+    align-items: end;
+    gap: 16px;
+    margin: 14px 0 18px;
+    flex-wrap: wrap;
+}
+
+.admin-search,
+.admin-filter {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.admin-search {
+    flex: 1;
+    min-width: 260px;
+}
+
+.admin-filter {
+    min-width: 180px;
+}
+
+.admin-table-tools label {
+    color: #dbe7f5;
+    font-size: 0.9rem;
+    font-weight: 600;
+}
+
+.admin-table-tools input,
+.admin-table-tools select {
+    width: 100%;
+    height: 44px;
+    padding: 0 14px;
+    border: 1px solid #315579;
+    border-radius: 10px;
+    background: #12283d;
+    color: #eef6ff;
+    font: inherit;
+    outline: none;
+    transition: border-color .2s ease, box-shadow .2s ease;
+}
+
+.admin-table-tools input::placeholder {
+    color: #8196aa;
+}
+
+.admin-table-tools input:focus,
+.admin-table-tools select:focus {
+    border-color: #55b9ff;
+    box-shadow: 0 0 0 3px rgba(85, 185, 255, 0.14);
+}
+
+.admin-table-tools select {
+    cursor: pointer;
+}
+
+.admin-table-tools select option {
+    background: #12283d;
+    color: #eef6ff;
+}
+
+@media (max-width: 650px) {
+    .admin-table-tools {
+        align-items: stretch;
+    }
+
+    .admin-search,
+    .admin-filter {
+        width: 100%;
+        min-width: 100%;
+    }
+}
+
+.admin-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin: 24px 0 18px;
+}
+
+.stat-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+
+.stat-card strong {
+    display: block;
+    font-size: 30px;
+    margin-top: 7px;
+}
+
+.stat-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.admin-section-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 24px;
+}
+
+.admin-section-nav a {
+    text-decoration: none;
+    padding: 9px 14px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #111827;
+    font-weight: 600;
+}
+
+.admin-section-nav a:hover {
+    background: #f3f4f6;
+}
+
+#setup,
+#courses,
+#users,
+#enrolments,
+#audit-log {
+    scroll-margin-top: 20px;
+}
+
+@media (max-width: 850px) {
+    .admin-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 500px) {
+    .admin-stats {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+
+<style>
+.admin-heading {
+    margin: 22px 0 10px;
+}
+
+.admin-heading .admin-eyebrow {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    margin-bottom: 6px;
+    opacity: .75;
+}
+
+.admin-heading h1 {
+    font-size: clamp(30px, 4vw, 46px);
+    line-height: 1.1;
+    margin: 0 0 8px;
+}
+
+.admin-heading p {
+    margin: 0;
+    max-width: 720px;
+    opacity: .78;
+    line-height: 1.5;
+}
+</style>
+
+<style>
+.admin-table-tools {
+    display: flex;
+    align-items: end;
+    gap: 14px;
+    margin: 0 0 14px;
+}
+
+.admin-search {
+    flex: 1;
+}
+
+.admin-filter {
+    width: 180px;
+}
+
+.admin-table-tools label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.admin-table-tools input,
+.admin-table-tools select {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 650px) {
+    .admin-table-tools {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .admin-filter {
+        width: 100%;
+    }
+}
+</style>
+
+

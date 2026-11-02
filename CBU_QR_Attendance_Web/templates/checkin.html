@@ -1,0 +1,307 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+<section class="hero">
+    <div class="kicker">Student check-in</div>
+    <h1>Scan attendance.</h1>
+    <p>
+        Your account already identifies you.
+        You never need to type your name or student number after scanning.
+    </p>
+</section>
+
+<div class="grid grid-2">
+
+    <div class="card">
+        <h2>Camera scanner</h2>
+
+        <div class="scanner">
+
+            <div
+                id="reader"
+                style="
+                    width: 100%;
+                    max-width: 500px;
+                    margin: 0 auto;
+                    overflow: hidden;
+                    border-radius: 12px;
+                ">
+            </div>
+
+            <p id="scanStatus" class="muted">
+                Press start to use your camera.
+            </p>
+
+            <button
+                id="startScan"
+                class="btn"
+                type="button">
+                Start camera scanner
+            </button>
+
+            <button
+                id="stopScan"
+                class="btn"
+                type="button"
+                style="display:none; margin-top:10px;">
+                Stop scanner
+            </button>
+
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Attendance token</h2>
+
+        {% if message %}
+        <div class="notice {{ 'good' if success else 'bad' }}">
+            {{ message }}
+        </div>
+        {% endif %}
+
+        <p class="muted">
+            The QR scanner fills this automatically.
+            You can paste a token manually if the camera is unavailable.
+        </p>
+
+        <form
+            method="post"
+            action="/student/checkin"
+            id="checkinForm">
+
+            <div class="field">
+                <label>Session token</label>
+
+                <input
+                    id="token"
+                    name="token"
+                    value="{{ token }}"
+                    required>
+            </div>
+
+            <button class="btn">
+                Register attendance
+            </button>
+
+        </form>
+    </div>
+
+</div>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<script>
+
+const statusEl = document.getElementById("scanStatus");
+const tokenEl = document.getElementById("token");
+const startButton = document.getElementById("startScan");
+const stopButton = document.getElementById("stopScan");
+const checkinForm = document.getElementById("checkinForm");
+
+let scanner = null;
+let scanning = false;
+let attendanceSubmitting = false;
+
+
+// Extract attendance token from QR
+function extractToken(decodedText) {
+
+    try {
+
+        const url = new URL(decodedText);
+        const token = url.searchParams.get("token");
+
+        if (token) {
+            return token;
+        }
+
+    } catch (error) {
+        // QR contains the token directly instead of a URL.
+    }
+
+    return decodedText.trim();
+}
+
+
+// Called when QR is successfully detected
+async function qrDetected(decodedText) {
+
+    if (attendanceSubmitting) {
+        return;
+    }
+
+    attendanceSubmitting = true;
+
+    const token = extractToken(decodedText);
+
+    if (!token) {
+
+        statusEl.textContent =
+            "QR code detected, but no attendance token was found.";
+
+        attendanceSubmitting = false;
+
+        return;
+    }
+
+    tokenEl.value = token;
+
+    statusEl.textContent =
+        "QR detected. Registering attendance...";
+
+    try {
+
+        if (scanner && scanning) {
+            await scanner.stop();
+            scanning = false;
+        }
+
+    } catch (error) {
+        console.log("Scanner stop warning:", error);
+    }
+
+    checkinForm.submit();
+}
+
+
+// Start scanner
+startButton.addEventListener("click", async function () {
+
+    if (scanning) {
+        return;
+    }
+
+    if (!navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia) {
+
+        statusEl.textContent =
+            "Camera access is unavailable. Open the system using HTTPS.";
+
+        return;
+    }
+
+    statusEl.textContent =
+        "Finding available cameras...";
+
+    try {
+
+        // Find actual cameras attached to the device
+        const cameras = await Html5Qrcode.getCameras();
+
+        console.log("Available cameras:", cameras);
+
+        if (!cameras || cameras.length === 0) {
+
+            statusEl.textContent =
+                "No camera was detected on this device.";
+
+            return;
+        }
+
+        /*
+         * Laptop:
+         * Usually the first camera is the built-in webcam.
+         *
+         * Phone:
+         * Prefer a camera whose label suggests it is the rear camera.
+         */
+
+        let selectedCamera = cameras[0];
+
+        const rearCamera = cameras.find(camera => {
+
+            const label = camera.label.toLowerCase();
+
+            return (
+                label.includes("back") ||
+                label.includes("rear") ||
+                label.includes("environment")
+            );
+
+        });
+
+        if (rearCamera) {
+            selectedCamera = rearCamera;
+        }
+
+        console.log("Selected camera:", selectedCamera);
+
+        scanner = new Html5Qrcode("reader");
+
+        const config = {
+
+            fps: 10,
+
+            qrbox: {
+                width: 250,
+                height: 250
+            }
+
+        };
+
+        statusEl.textContent =
+            "Starting camera...";
+
+        await scanner.start(
+            selectedCamera.id,
+            config,
+            qrDetected,
+            function () {
+                // No QR detected in this frame.
+            }
+        );
+
+        scanning = true;
+
+        statusEl.textContent =
+            "Camera ready. Point it at the lecturer's QR code.";
+
+        startButton.style.display = "none";
+        stopButton.style.display = "inline-block";
+
+    } catch (error) {
+
+        console.error("QR scanner error:", error);
+
+        statusEl.textContent =
+            "Scanner failed: " +
+            (error.message || error);
+
+        scanning = false;
+
+    }
+
+});
+
+
+// Stop scanner
+stopButton.addEventListener("click", async function () {
+
+    if (!scanner || !scanning) {
+        return;
+    }
+
+    try {
+
+        await scanner.stop();
+
+        scanning = false;
+
+        statusEl.textContent =
+            "Scanner stopped.";
+
+        startButton.style.display = "inline-block";
+        stopButton.style.display = "none";
+
+    } catch (error) {
+
+        console.error("Scanner stop error:", error);
+
+    }
+
+});
+
+</script>
+
+{% endblock %}
